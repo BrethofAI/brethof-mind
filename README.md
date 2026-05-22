@@ -25,6 +25,19 @@ recall never depends on what survived a summary or fit in a context window.
 No summarization model. No separate memory agent. No API keys. Just your raw
 history — searchable three ways: **full-text, vector, and graph** — 100% local.
 
+### Two memories, working together
+
+brethof-mind keeps two stores, and the pairing is the point:
+
+- **Curated memory** — what the agent writes down on purpose: decisions,
+  architecture, status, your corrections. Dense and high-signal. Your *notes*.
+- **Full chat memory** — every transcript line, captured automatically.
+  Complete and raw. The *recording*.
+
+Notes are fast but lossy; the recording is the insurance. When the notes missed
+something, the full history still has it — searchable. You get the speed of a
+curated view without ever depending on one.
+
 ```
  you open a new session ─► SessionStart hook loads pinned rules, recent
                             memory, and a recap of where you left off
@@ -38,8 +51,9 @@ history — searchable three ways: **full-text, vector, and graph** — 100% loc
 
 - **Cross-session recall.** The agent picks up where it left off — no
   re-explaining context every morning.
-- **Two memory layers.** A small *curated* layer (decisions, architecture,
-  status) and a complete *archive* of every transcript line.
+- **Two memories, working together.** A dense *curated* layer (your notes)
+  backed by a complete *chat archive* (the recording) — so recall never
+  depends on what a summary kept.
 - **Three ways to search.** Full-text (stemmed, BM25-ranked), semantic
   (vector), and graph (SurrealQL traversal + relations).
 - **Multi-project.** One DB, one table per project. A `projects.json` maps each
