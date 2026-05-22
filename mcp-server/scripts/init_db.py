@@ -33,6 +33,11 @@ def build_ddl(keys: list[str], dim: int) -> str:
         "DEFINE INDEX IF NOT EXISTS idx_supersedes_in  ON supersedes FIELDS in;",
         "DEFINE INDEX IF NOT EXISTS idx_supersedes_out ON supersedes FIELDS out;",
         "",
+        "-- Full-text analyzer for search_memory: tokenize, lowercase, ascii-fold,",
+        "-- and snowball-stem (english) so e.g. 'deploying' matches 'deploy'.",
+        "DEFINE ANALYZER IF NOT EXISTS memory_text TOKENIZERS blank,class "
+        "FILTERS lowercase,ascii,snowball(english);",
+        "",
     ]
     for k in keys:
         lines += [
@@ -40,7 +45,10 @@ def build_ddl(keys: list[str], dim: int) -> str:
             f"DEFINE TABLE IF NOT EXISTS {k} TYPE ANY SCHEMALESS PERMISSIONS NONE;",
             f"DEFINE INDEX IF NOT EXISTS idx_{k}_embedding ON {k} FIELDS embedding "
             f"HNSW DIMENSION {dim} DIST COSINE;",
-            f"DEFINE INDEX IF NOT EXISTS idx_{k}_content   ON {k} FIELDS content;",
+            f"DEFINE INDEX IF NOT EXISTS idx_{k}_content_fts ON {k} FIELDS content "
+            f"FULLTEXT ANALYZER memory_text BM25;",
+            f"DEFINE INDEX IF NOT EXISTS idx_{k}_title_fts   ON {k} FIELDS title "
+            f"FULLTEXT ANALYZER memory_text BM25;",
             f"DEFINE INDEX IF NOT EXISTS idx_{k}_updated   ON {k} FIELDS updated_at;",
             f"DEFINE INDEX IF NOT EXISTS idx_{k}_obsolete  ON {k} FIELDS obsolete;",
             "",

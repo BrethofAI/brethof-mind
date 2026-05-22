@@ -6,11 +6,24 @@
 ![Built on SurrealDB](https://img.shields.io/badge/built%20on-SurrealDB-ff00a0.svg)
 ![Local-first](https://img.shields.io/badge/local--first-no%20cloud-2ea44f.svg)
 
+*Don't summarize your memory — search it. The complete session history for
+Claude Code: full-text + vector + graph, 100% local, no API.*
+
 Claude Code forgets everything between sessions. brethof-mind gives it a
 persistent, searchable memory: an MCP server with seven tools and four
 lifecycle hooks, backed by a local SurrealDB. Decisions, status, and bugs are
-saved as curated memory; every conversation is mirrored into a full-text +
-vector + graph archive. All of it stays on your machine.
+saved as curated memory; every conversation is mirrored into a complete,
+searchable archive. All of it stays on your machine.
+
+### Why keep everything?
+
+Claude Code's context gets compacted and truncated — and summaries are lossy:
+they're one model's guess at what mattered. brethof-mind doesn't summarize. It
+keeps the **complete transcript** of every session and makes it searchable, so
+recall never depends on what survived a summary or fit in a context window.
+
+No summarization model. No separate memory agent. No API keys. Just your raw
+history — searchable three ways: **full-text, vector, and graph** — 100% local.
 
 ```
  you open a new session ─► SessionStart hook loads pinned rules, recent
@@ -27,12 +40,13 @@ vector + graph archive. All of it stays on your machine.
   re-explaining context every morning.
 - **Two memory layers.** A small *curated* layer (decisions, architecture,
   status) and a complete *archive* of every transcript line.
-- **Three ways to search.** Keyword, semantic (vector), and raw SurrealQL for
-  graph traversal and aggregates.
+- **Three ways to search.** Full-text (stemmed, BM25-ranked), semantic
+  (vector), and graph (SurrealQL traversal + relations).
 - **Multi-project.** One DB, one table per project. A `projects.json` maps each
   repo to its own memory.
-- **Local-first.** SurrealDB in a container on localhost. Embeddings computed
-  locally (no API). Nothing leaves your machine.
+- **Local-first, no API.** SurrealDB in a local container; embeddings computed
+  locally (fastembed, CPU). No API keys, no per-call cost — runs offline after
+  a one-time ~23 MB model download. Nothing leaves your machine.
 - **Robust archiving.** The Stop hook chunks oversized turns, retries
   per-statement, and tracks a byte offset so it never loses or duplicates a
   line.
@@ -91,7 +105,7 @@ The MCP server exposes seven tools (registered above as `memory`):
 |---|---|
 | `load_project(project)` | Dump a project's recent curated memory. |
 | `save_memory(project, id, type, title, content)` | UPSERT a curated record (auto-embedded). |
-| `search_memory(query, project?)` | Keyword search over curated memory. |
+| `search_memory(query, project?)` | Full-text search over curated memory (stemmed, BM25-ranked). |
 | `semantic_search(query, project?, top_k?)` | Vector search over curated memory. |
 | `search_chat(query, project?, top_k?)` | Vector search over the full chat archive. |
 | `query_raw(sql)` | Arbitrary SurrealQL — graph traversal, aggregates. |

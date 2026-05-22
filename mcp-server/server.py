@@ -152,10 +152,13 @@ async def save_memory(
 
 @mcp.tool()
 async def search_memory(query_text: str, project: str = "") -> str:
-    """Search curated memories by keyword across one or all projects.
+    """Full-text search curated memories across one or all projects.
+
+    Stemmed + BM25-ranked (so 'deploying' matches 'deploy'), over titles and
+    content. For meaning-based recall use semantic_search instead.
 
     Args:
-        query_text: Text to find in content and titles.
+        query_text: Words to search for in titles and content.
         project: Optional project key. Leave empty to search all.
     """
     tables = [project] if project else _all_tables()
@@ -164,9 +167,10 @@ async def search_memory(query_text: str, project: str = "") -> str:
     all_results = []
     for table in tables:
         results = await _query(
-            f"SELECT id, type, title, content FROM {table} "
-            f"WHERE content CONTAINS '{safe}' OR title CONTAINS '{safe}' "
-            f"LIMIT 10;"
+            f"SELECT id, type, title, content, "
+            f"(search::score(1) ?? 0) + (search::score(2) ?? 0) AS score "
+            f"FROM {table} WHERE content @1@ '{safe}' OR title @2@ '{safe}' "
+            f"ORDER BY score DESC LIMIT 10;"
         )
         records = results[0].get("result", []) if results else []
         for r in records:
@@ -176,6 +180,7 @@ async def search_memory(query_text: str, project: str = "") -> str:
     if not all_results:
         return f"No results for '{query_text}'"
 
+    all_results.sort(key=lambda r: r.get("score", 0) or 0, reverse=True)
     output = []
     for r in all_results[:20]:
         title = r.get("title") or r.get("id", "?")

@@ -29,7 +29,9 @@
 --   superseded_reason  string
 --   superseded_by      record   link to the replacement (see `supersedes`)
 --
--- Indexes (created by init_db.py): embedding (HNSW), content, updated_at, obsolete.
+-- Indexes (created by init_db.py): embedding (HNSW vector); content + title
+-- (full-text BM25, via the `memory_text` analyzer — lowercase/ascii/snowball);
+-- updated_at; obsolete.
 
 
 -- ── Chat archive table  (one per project key, e.g. `global_chat`) ────────
