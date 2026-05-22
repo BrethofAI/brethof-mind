@@ -24,6 +24,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import urllib.request
 from pathlib import Path
 
@@ -34,6 +35,12 @@ DEFAULT_CONFIG = {
     "default_project": "global",
     "projects": [{"key": "global", "match": []}],
 }
+
+# SurrealDB version this release is built and tested against. SurrealQL changes
+# across major versions (e.g. 3.0 renamed `SEARCH ANALYZER` → `FULLTEXT
+# ANALYZER` on DEFINE INDEX), so a newer server may need code tweaks. When you
+# validate a new version, bump this AND the image tag in docker-compose.yml.
+SUPPORTED_SURREALDB = "3.0.5"
 
 _REPO = Path(__file__).resolve().parent.parent
 
@@ -119,6 +126,21 @@ def surreal_query(sql: str, cfg: dict, timeout: float = 60.0,
     )
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read())
+
+
+def server_version(cfg: dict, timeout: float = 10.0) -> str | None:
+    """Return the running SurrealDB version (e.g. '3.0.5'), or None if the
+    server is unreachable or the version can't be parsed. Used by init_db.py
+    to warn when the server is an untested major version."""
+    url = cfg["surrealdb"]["url"].rstrip("/") + "/version"
+    try:
+        req = urllib.request.Request(url, headers={"Authorization": auth_header(cfg)})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read().decode("utf-8", "replace").strip()
+    except Exception:
+        return None
+    m = re.search(r"\d+\.\d+\.\d+", raw)
+    return m.group(0) if m else (raw or None)
 
 
 # ── lazy embedding (fastembed) ───────────────────────────────────────────

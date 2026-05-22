@@ -1,5 +1,8 @@
 services:
   surrealdb:
+    # Tested against v3.0.5. SurrealQL changes across majors (see the README
+    # "Compatibility" section); keep this tag in sync with SUPPORTED_SURREALDB
+    # in mcp-server/_config.py when you validate a newer release.
     image: docker.io/surrealdb/surrealdb:v3.0.5
     container_name: brethof-mind-db
     ports:

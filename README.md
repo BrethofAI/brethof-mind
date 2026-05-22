@@ -3,7 +3,7 @@
 **Long-term memory for [Claude Code](https://docs.claude.com/en/docs/claude-code), built on [SurrealDB](https://surrealdb.com).**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Built on SurrealDB](https://img.shields.io/badge/built%20on-SurrealDB-ff00a0.svg)
+![SurrealDB v3.0.5](https://img.shields.io/badge/SurrealDB-v3.0.5-ff00a0.svg)
 ![Local-first](https://img.shields.io/badge/local--first-no%20cloud-2ea44f.svg)
 
 *Don't summarize your memory — search it. The complete session history for
@@ -143,6 +143,19 @@ absolute path. First match wins; unmatched dirs fall into `default_project`.
 The `key` is the table name. After adding a project, re-run `init_db.py` to
 create its indexes. **Credentials never go in this file** — they come from the
 environment (see `.env.example`).
+
+## Compatibility
+
+Built and tested against **SurrealDB v3.0.5** (pinned in `docker-compose.yml`).
+SurrealQL evolves across major versions — 3.0, for instance, renamed the
+full-text index clause from `SEARCH ANALYZER` to `FULLTEXT ANALYZER` — so a
+newer server may need small tweaks.
+
+`init_db.py` reads the running server's version and warns if its major version
+differs from the tested one, so you get a clear heads-up rather than a cryptic
+parse error. When you validate brethof-mind against a new SurrealDB release,
+bump it in two places: the `image:` tag in `docker-compose.yml` and
+`SUPPORTED_SURREALDB` in `mcp-server/_config.py`.
 
 ## Privacy
 

@@ -20,7 +20,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from _config import load_config, project_keys, surreal_query  # noqa: E402
+from _config import (  # noqa: E402
+    load_config, project_keys, surreal_query, server_version, SUPPORTED_SURREALDB,
+)
 
 
 def build_ddl(keys: list[str], dim: int) -> str:
@@ -91,6 +93,14 @@ def main() -> int:
 
     print(f"Applying schema to {sd['url']} (ns={ns} db={db})", flush=True)
     print(f"Projects: {', '.join(keys)}  |  embedding dim: {dim}", flush=True)
+    ver = server_version(cfg)
+    if ver and ver.split(".")[0] != SUPPORTED_SURREALDB.split(".")[0]:
+        print(f"  ⚠ WARNING: server is SurrealDB {ver}, tested against "
+              f"{SUPPORTED_SURREALDB}. Major-version changes can alter SurrealQL "
+              f"(e.g. full-text index syntax) — apply may need code tweaks.",
+              flush=True)
+    elif ver:
+        print(f"  SurrealDB {ver} (tested against {SUPPORTED_SURREALDB})", flush=True)
     try:
         # with_context=False: run at the connection root and switch context
         # via the USE statements inside the script (see bootstrap above).
