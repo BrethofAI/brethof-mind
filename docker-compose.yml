@@ -1,0 +1,34 @@
+services:
+  surrealdb:
+    image: docker.io/surrealdb/surrealdb:v3.0.5
+    container_name: brethof-mind-db
+    ports:
+      - "${SURREAL_PORT:-8200}:8000"
+    volumes:
+      # The DB lives here. ./data is gitignored — it holds all your memory
+      # and the full chat archive. Back it up; never commit it.
+      - ./data:/data
+    user: root
+    command: >
+      start --user ${SURREALDB_USER:-root} --pass ${SURREALDB_PASS:-root}
+      --log info surrealkv:/data/srdb.db
+    restart: unless-stopped
+    environment:
+      # Raised from the 1 MiB default to 64 MiB so the chat_stop hook can
+      # UPSERT transcript lines that contain large tool results (file reads,
+      # long command output, embedded data). Without this, big turns fail
+      # with HTTP 413 "Payload Too Large" and archiving silently stalls.
+      - SURREAL_HTTP_MAX_SQL_BODY_SIZE=67108864
+      - SURREAL_HTTP_MAX_RPC_BODY_SIZE=67108864
+      - SURREAL_HTTP_MAX_API_BODY_SIZE=67108864
+
+  # Optional web UI for browsing/querying the DB. Remove this service if you
+  # don't want it — the memory system does not depend on it.
+  surrealist:
+    image: docker.io/surrealdb/surrealist:latest
+    container_name: brethof-mind-ui
+    ports:
+      - "${SURREALIST_PORT:-8201}:8080"
+    restart: unless-stopped
+    depends_on:
+      - surrealdb

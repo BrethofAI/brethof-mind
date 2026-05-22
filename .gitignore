@@ -1,0 +1,25 @@
+# ─────────────────────────────────────────────────────────────────────────
+# NEVER commit the database. It holds your entire curated memory AND the full
+# chat archive of every Claude Code conversation (prompts, code, tool output).
+# This is the single most sensitive directory in the project.
+# ─────────────────────────────────────────────────────────────────────────
+/data/
+/backup/
+*.db
+*.surql.local
+
+# Local config — credentials live in .env; projects.json is your machine map.
+.env
+projects.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Editor / OS
+.DS_Store
+*.swp
+*~

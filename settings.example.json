@@ -1,0 +1,30 @@
+{
+  "//": "Merge this 'hooks' block into your ~/.claude/settings.json. The Stop hook needs fastembed, so point it at the mcp-server virtualenv's python (replace /ABSOLUTE/PATH/TO). The other two are stdlib-only and run under system python3.",
+
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "python3 $HOME/.claude/hooks/load_memory.py" }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "python3 $HOME/.claude/hooks/memory_nudge.py" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "/ABSOLUTE/PATH/TO/brethof-mind/mcp-server/.venv/bin/python $HOME/.claude/hooks/chat_stop.py" }
+        ]
+      }
+    ]
+  }
+}

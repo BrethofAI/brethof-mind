@@ -1,0 +1,21 @@
+{
+  "_comment": "Copy to projects.json and edit. Maps a working directory to a memory table (project key) by substring-matching the absolute cwd path. Read by the MCP server, the hooks, and the scripts. Credentials never live here — they come from the environment (see .env.example). The url/ns/db here are defaults; matching env vars override them.",
+
+  "surrealdb": {
+    "url": "http://localhost:8200",
+    "ns": "ai",
+    "db": "memory"
+  },
+
+  "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "embedding_dim": 384,
+
+  "default_project": "global",
+
+  "projects": [
+    { "key": "global", "match": [] },
+    { "key": "webapp", "match": ["my-webapp", "frontend"] },
+    { "key": "api",    "match": ["my-api", "backend"] },
+    { "key": "infra",  "match": ["infra", "terraform", "k8s"] }
+  ]
+}
