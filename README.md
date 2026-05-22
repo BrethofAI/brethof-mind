@@ -65,6 +65,20 @@ curated view without ever depending on one.
   per-statement, and tracks a byte offset so it never loses or duplicates a
   line.
 
+## Works with
+
+The memory tools run in any MCP-capable client; the hooks (auto-capture +
+auto-load) come with Claude Code — and Claude Desktop runs Claude Code as its
+engine, so you get the full experience in both.
+
+- ✅ **Claude Code** — full: memory tools + automatic capture & recall (hooks)
+- ✅ **Claude Desktop** — full: it runs on Claude Code, so the same hooks + tools apply
+- 🔜 **OpenClaw** — coming soon
+- 🔜 **Hermes** — coming soon (its design already targets this memory)
+
+Any other MCP client can use the memory tools too — the automatic capture is
+the Claude Code (and Desktop) piece.
+
 ## How it works
 
 Four parts — a SurrealDB container, an MCP server, four hooks, and a
