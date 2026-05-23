@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """brethof-mind — SurrealDB-backed long-term memory MCP server for Claude Code.
 
-Exposes seven tools over stdio:
+Exposes nine tools over stdio:
   load_project    — dump a project's recent memory at conversation start
   save_memory     — UPSERT a curated memory record (auto-embedded)
   search_memory   — keyword search over curated memory
   semantic_search — vector search over curated memory
   search_chat     — vector search over the full chat-history archive
+  get_memory      — fetch ONE record's full, untruncated content by id
+  list_memory     — browse a project's record ids/titles (no content)
   query_raw       — arbitrary SurrealQL (graph traversal, aggregates)
   save_commit     — record a git commit against a project
 
@@ -18,6 +20,7 @@ Tables are created lazily by SurrealDB on first write; run scripts/init_db.py
 once to add the vector/keyword indexes that make search fast.
 """
 import json
+import re
 
 import httpx
 from fastmcp import FastMCP
@@ -33,7 +36,9 @@ mcp = FastMCP(
         "SurrealDB-backed long-term memory for Claude Code. Call load_project() "
         "at conversation start. Use save_memory the moment a decision, "
         "correction, or status locks. Use semantic_search/search_memory for "
-        "curated memory and search_chat to recall full past conversations."
+        "curated memory and search_chat to recall full past conversations. "
+        "get_memory(id) reads one record in full (search results are previews); "
+        "list_memory(project) browses ids/titles."
     ),
 )
 
@@ -329,6 +334,90 @@ async def save_commit(
     if results and results[0].get("status") == "OK":
         return f"Commit {commit_hash[:8]} saved to {table}"
     return f"Error: {json.dumps(results)}"
+
+
+@mcp.tool()
+async def get_memory(record_id: str, project: str = "") -> str:
+    """Fetch ONE memory record's FULL, untruncated content by id.
+
+    search_memory / semantic_search / load_project all return short previews
+    (~200-300 chars). Once you know a record's id, use this to read the whole
+    thing — no raw SQL needed.
+
+    Args:
+        record_id: Full id 'table:key' (e.g. 'global:nova_pipeline_v3'), or
+                   just the key if you also pass `project`.
+        project: Table to use when record_id has no 'table:' prefix.
+    """
+    rid = record_id.strip()
+    if ":" not in rid:
+        if not project:
+            return ("Error: pass a full id like 'global:my_key', or "
+                    "record_id='my_key' together with project='global'.")
+        rid = f"{project}:{rid}"
+    table, _, key = rid.partition(":")
+    if not (re.fullmatch(r"[A-Za-z0-9_]+", table)
+            and re.fullmatch(r"[A-Za-z0-9_]+", key)):
+        return (f"Error: unsupported id '{record_id}' "
+                f"(expected snake_case table:key).")
+
+    results = await _query(f"SELECT * FROM {table}:{key};")
+    records = results[0].get("result", []) if results else []
+    if not records:
+        return f"No record found: {table}:{key}"
+    r = records[0]
+    r.pop("embedding", None)  # drop the 384-d vector — never useful to read
+    title = r.get("title") or r.get("id", "?")
+    rtype = r.get("type", "?")
+    content = r.get("content", "")
+    meta = {k: v for k, v in r.items()
+            if k not in ("content", "title", "type", "id", "embedding")}
+    out = [f"# {table}:{key}  [{rtype}]", title, ""]
+    if meta:
+        out.append("meta: " + json.dumps(meta, default=str, ensure_ascii=False))
+        out.append("")
+    out.append(content)
+    return "\n".join(out)
+
+
+@mcp.tool()
+async def list_memory(project: str, memory_type: str = "", limit: int = 50) -> str:
+    """Browse a project's memory — id + type + title (no content), newest first.
+
+    See what's stored and grab an id to read in full with get_memory, without
+    guessing ids or dropping to raw SQL.
+
+    Args:
+        project: Project key (table).
+        memory_type: Optional type filter (decision, architecture, bug, ...).
+        limit: Max records returned (default 50).
+    """
+    table = project
+    where = "obsolete != true"
+    if memory_type:
+        safe_t = memory_type.replace("\\", "\\\\").replace("'", "\\'")
+        where += f" AND type = '{safe_t}'"
+    # Deliberately NO `ORDER BY` in SQL: on this DB an equality predicate
+    # (type = ...) combined with ORDER BY updated_at can 400 when updated_at is
+    # mixed-typed (string vs datetime) across records. Fetch unsorted, then
+    # sort in Python — robust regardless of how clean the timestamps are.
+    results = await _query(
+        f"SELECT id, type, title, updated_at FROM {table} "
+        f"WHERE {where} LIMIT 1000;"
+    )
+    records = results[0].get("result", []) if results else []
+    if not records:
+        suffix = f" of type '{memory_type}'" if memory_type else ""
+        return f"No records in '{project}'{suffix}"
+    records.sort(key=lambda r: str(r.get("updated_at") or ""), reverse=True)
+    records = records[:max(1, int(limit))]
+    out = [f"## {project}: {len(records)} records "
+           f"(use get_memory <id> for full content)"]
+    for r in records:
+        ts = (str(r.get("updated_at") or ""))[:10]
+        out.append(f"{r.get('id')}  [{r.get('type','?')}]  "
+                   f"{r.get('title','')}  ({ts})")
+    return "\n".join(out)
 
 
 if __name__ == "__main__":

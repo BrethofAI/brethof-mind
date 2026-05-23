@@ -10,7 +10,7 @@
 Claude Code: full-text + vector + graph, 100% local, no API.*
 
 Claude Code forgets everything between sessions. brethof-mind gives it a
-persistent, searchable memory: an MCP server with seven tools and four
+persistent, searchable memory: an MCP server with nine tools and four
 lifecycle hooks, backed by a local SurrealDB. Decisions, status, and bugs are
 saved as curated memory; every conversation is mirrored into a complete,
 searchable archive. All of it stays on your machine.
@@ -127,7 +127,7 @@ mcp-server/.venv/bin/python mcp-server/scripts/ingest_transcripts.py
 
 ## The tools
 
-The MCP server exposes seven tools (registered above as `memory`):
+The MCP server exposes nine tools (registered above as `memory`):
 
 | Tool | What it does |
 |---|---|
@@ -136,6 +136,8 @@ The MCP server exposes seven tools (registered above as `memory`):
 | `search_memory(query, project?)` | Full-text search over curated memory (stemmed, BM25-ranked). |
 | `semantic_search(query, project?, top_k?)` | Vector search over curated memory. |
 | `search_chat(query, project?, top_k?)` | Vector search over the full chat archive. |
+| `get_memory(record_id, project?)` | Fetch ONE record's full, untruncated content by id (search results are previews). |
+| `list_memory(project, type?, limit?)` | Browse a project's record ids/titles (no content), newest first. |
 | `query_raw(sql)` | Arbitrary SurrealQL — graph traversal, aggregates. |
 | `save_commit(project, hash, message, files, branch?)` | Record a git commit. |
 
