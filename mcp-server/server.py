@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """brethof-mind — SurrealDB-backed long-term memory MCP server for Claude Code.
 
-Exposes nine tools over stdio:
+Exposes eleven tools over stdio:
   load_project    — dump a project's recent memory at conversation start
-  save_memory     — UPSERT a curated memory record (auto-embedded)
+  save_memory     — UPSERT a curated memory NOTE (type/title/content, auto-embedded)
+  save_record     — UPSERT a STRUCTURED record (arbitrary typed fields)
   search_memory   — keyword search over curated memory
   semantic_search — vector search over curated memory
   search_chat     — vector search over the full chat-history archive
   get_memory      — fetch ONE record's full, untruncated content by id
   list_memory     — browse a project's record ids/titles (no content)
+  recent_records  — recent structured rows from a table (scoped, filtered)
   query_raw       — arbitrary SurrealQL (graph traversal, aggregates)
   save_commit     — record a git commit against a project
 
@@ -312,6 +314,11 @@ async def search_chat(query_text: str, project: str = "", top_k: int = 8) -> str
 async def query_raw(sql: str) -> str:
     """Execute raw SurrealQL (graph traversal, aggregates, custom queries).
 
+    SurrealDB v3 note: `CONTAINS` is the ARRAY-membership operator and 400s on
+    strings — for substring use `string::contains(field, 'x')` or the `~`
+    operator. Prefer get_memory for full single-record reads and recent_records
+    for scoped table reads; keep query_raw for ->graph traversal and aggregates.
+
     Args:
         sql: A SurrealQL query string.
     """
@@ -363,6 +370,93 @@ async def save_commit(
     if results and results[0].get("status") == "OK":
         return f"Commit {commit_hash[:8]} saved to {table}"
     return f"Error: {json.dumps(results)}"
+
+
+@mcp.tool()
+async def save_record(project: str, record_id: str, fields: str,
+                      embed_text: str = "") -> str:
+    """UPSERT a STRUCTURED record (arbitrary typed fields) into a table.
+
+    save_memory stores a prose NOTE (type/title/content). save_record stores a
+    structured record: pass `fields` as a JSON object and every key becomes a
+    real SurrealDB field you can SELECT, filter, index, and link with graph
+    edges — for a product catalog, a posts/events ledger, etc. `updated_at` is
+    set automatically. Pass `embed_text` to also store an embedding so the
+    record is findable via semantic_search.
+
+    Args:
+        project: Table name (snake_case). Need NOT be a configured project; the
+                 table is created on first write. Tables that aren't configured
+                 projects stay out of the blanket search tools — ideal for a
+                 high-volume ledger you only read deliberately (with
+                 recent_records / query_raw).
+        record_id: Snake_case key, or a full 'table:key'.
+        fields: JSON object of fields to set, e.g.
+                '{"name": "Brethof Voice Pro", "kind": "product", "tags": ["a","b"]}'.
+                Values may be strings, numbers, booleans, arrays, or objects.
+        embed_text: Optional text to embed for semantic_search ('' = skip).
+    """
+    try:
+        table, key = _resolve_id(record_id, project)
+    except ValueError as e:
+        return f"Error: {e}"
+    try:
+        data = json.loads(fields)
+    except json.JSONDecodeError as e:
+        return f"Error: `fields` is not valid JSON: {e}"
+    if not isinstance(data, dict):
+        return "Error: `fields` must be a JSON object, e.g. '{\"name\": \"X\"}'."
+    sets = []
+    for k, v in data.items():
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", k):
+            return f"Error: bad field name '{k}' (snake_case, no dots)."
+        sets.append(f"{k} = {json.dumps(v, ensure_ascii=False)}")
+    if embed_text.strip():
+        sets.append(f"embedding = {json.dumps(embed_one(embed_text, CFG))}")
+    sets.append("updated_at = time::now()")
+    results = await _query(f"UPSERT {table}:{key} SET " + ", ".join(sets) + ";")
+    if results and results[0].get("status") == "OK":
+        return f"Saved {table}:{key} ({len(data)} fields)"
+    return f"Error: {json.dumps(results)}"
+
+
+@mcp.tool()
+async def recent_records(project: str, days: int = 0, where: str = "",
+                         limit: int = 20) -> str:
+    """Recent STRUCTURED records from a table, newest first (scoped reader).
+
+    For high-volume tables (e.g. a posts ledger) — read a bounded, filtered
+    slice instead of scanning the whole table or pulling it into context.
+    Returns compact JSON rows (the embedding vector is dropped).
+
+    Args:
+        project: Table name (snake_case).
+        days: Keep only rows whose updated_at is within the last N days
+              (0 = no time filter).
+        where: Optional extra SurrealQL filter inserted verbatim, e.g.
+               "pillar = 'bvp' AND channel = 'x'". You author it — trusted input.
+        limit: Max rows, 1-200 (default 20).
+    """
+    if not re.fullmatch(r"[A-Za-z0-9_]+", project):
+        return f"Error: bad table name '{project}' (snake_case)."
+    clauses = []
+    if days and int(days) > 0:
+        clauses.append(f"updated_at > time::now() - {int(days)}d")
+    if where.strip():
+        clauses.append(f"({where.strip()})")
+    where_sql = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    lim = max(1, min(int(limit), 200))
+    results = await _query(
+        f"SELECT * FROM {project}{where_sql} ORDER BY updated_at DESC LIMIT {lim};"
+    )
+    rows = results[0].get("result", []) if results else []
+    if not rows:
+        return f"No records in '{project}'" + (" matching filter." if clauses else ".")
+    out = [f"{project}: {len(rows)} record(s)"]
+    for r in rows:
+        r.pop("embedding", None)
+        out.append(json.dumps(r, default=str, ensure_ascii=False))
+    return "\n".join(out)
 
 
 @mcp.tool()
