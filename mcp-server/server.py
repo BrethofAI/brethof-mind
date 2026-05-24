@@ -69,6 +69,31 @@ def _default_table() -> str:
     return CFG.get("default_project", "global")
 
 
+def _resolve_id(record_id: str, project: str = "") -> tuple[str, str]:
+    """Normalize a record id to a (table, key) pair.
+
+    Accepts either a full ``table:key`` or a bare ``key`` (with ``project``
+    supplying the table). Both halves are validated as snake_case so that a
+    stray ``table:`` prefix can't produce a malformed ``table:table:key``
+    (which SurrealDB rejects with an opaque parse-error 400) and so the id
+    can't inject SurrealQL. Raises ValueError with a clear message on bad
+    input. Shared by save_memory and get_memory.
+    """
+    rid = record_id.strip()
+    if ":" in rid:
+        table, _, key = rid.partition(":")
+    elif project:
+        table, key = project, rid
+    else:
+        raise ValueError("pass a full id like 'global:my_key', or "
+                         "record_id='my_key' together with project='global'.")
+    if not (re.fullmatch(r"[A-Za-z0-9_]+", table)
+            and re.fullmatch(r"[A-Za-z0-9_]+", key)):
+        raise ValueError(f"unsupported id '{record_id}' "
+                         f"(expected snake_case table:key).")
+    return table, key
+
+
 @mcp.tool()
 async def load_project(project: str) -> str:
     """Load recent memories for a project at conversation start.
@@ -133,16 +158,20 @@ async def save_memory(
         title: Short descriptive title.
         content: Full content of the memory.
     """
-    table = project
+    try:
+        table, key = _resolve_id(record_id, project)
+    except ValueError as e:
+        return f"Error: {e}"
     safe_content = content.replace("\\", "\\\\").replace("'", "\\'")
     safe_title = title.replace("\\", "\\\\").replace("'", "\\'")
+    safe_type = memory_type.replace("\\", "\\\\").replace("'", "\\'")
 
     embed_text = f"{title} [{memory_type}] {content[:500]}"
     vec_str = json.dumps(embed_one(embed_text, CFG))
 
     results = await _query(
-        f"UPSERT {table}:{record_id} SET "
-        f"type = '{memory_type}', "
+        f"UPSERT {table}:{key} SET "
+        f"type = '{safe_type}', "
         f"title = '{safe_title}', "
         f"content = '{safe_content}', "
         f"scope = 'project', "
@@ -151,7 +180,7 @@ async def save_memory(
     )
 
     if results and results[0].get("status") == "OK":
-        return f"Saved {table}:{record_id}"
+        return f"Saved {table}:{key}"
     return f"Error: {json.dumps(results)}"
 
 
@@ -349,17 +378,10 @@ async def get_memory(record_id: str, project: str = "") -> str:
                    just the key if you also pass `project`.
         project: Table to use when record_id has no 'table:' prefix.
     """
-    rid = record_id.strip()
-    if ":" not in rid:
-        if not project:
-            return ("Error: pass a full id like 'global:my_key', or "
-                    "record_id='my_key' together with project='global'.")
-        rid = f"{project}:{rid}"
-    table, _, key = rid.partition(":")
-    if not (re.fullmatch(r"[A-Za-z0-9_]+", table)
-            and re.fullmatch(r"[A-Za-z0-9_]+", key)):
-        return (f"Error: unsupported id '{record_id}' "
-                f"(expected snake_case table:key).")
+    try:
+        table, key = _resolve_id(record_id, project)
+    except ValueError as e:
+        return f"Error: {e}"
 
     results = await _query(f"SELECT * FROM {table}:{key};")
     records = results[0].get("result", []) if results else []
