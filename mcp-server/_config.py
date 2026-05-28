@@ -87,7 +87,35 @@ def project_keys(cfg: dict) -> list[str]:
 
 
 def detect_project(cwd: str, cfg: dict) -> str:
-    """Map an absolute working directory to a project key by substring match."""
+    """Resolve the project (memory table) for a working directory.
+
+    Precedence:
+      1. $BRETHOF_MIND_PROJECT — explicit override. Use it when the cwd is
+         misleading: SSH/remote work, monorepos, or driving another machine
+         from a coordinator dir (e.g. VPS ops run from a different repo). The
+         cwd-substring rule alone misfiles all of these into default_project.
+      2. A `.brethof-mind-project` marker file found by walking up from cwd;
+         its first non-empty line is the project key. Pins a directory tree
+         whose path matches no `match` substring.
+      3. Substring match of cwd against each project's `match` list.
+      4. default_project.
+    """
+    env_key = os.environ.get("BRETHOF_MIND_PROJECT", "").strip()
+    if re.fullmatch(r"[A-Za-z0-9_]+", env_key or ""):
+        return env_key
+    try:
+        d = Path(cwd or ".").resolve()
+        for base in (d, *d.parents):
+            marker = base / ".brethof-mind-project"
+            if marker.is_file():
+                lines = [ln.strip() for ln
+                         in marker.read_text(encoding="utf-8").splitlines()
+                         if ln.strip()]
+                if lines and re.fullmatch(r"[A-Za-z0-9_]+", lines[0]):
+                    return lines[0]
+                break  # marker present but unusable — stop walking up
+    except Exception:
+        pass  # unreadable path/marker → fall through to substring match
     c = (cwd or "").lower().replace("\\", "/")
     for proj in cfg.get("projects", []):
         for m in proj.get("match", []):

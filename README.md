@@ -176,6 +176,18 @@ The `key` is the table name. After adding a project, re-run `init_db.py` to
 create its indexes. **Credentials never go in this file** — they come from the
 environment (see `.env.example`).
 
+**Overriding the detected project.** Path-substring matching misfiles work
+whose cwd doesn't reflect the project — SSH/remote sessions, monorepos, or
+driving one project from another's directory. Two overrides take precedence
+over `match` (highest first):
+
+- `BRETHOF_MIND_PROJECT=<key>` in the environment — pins the whole session.
+  Set it before launching Claude Code when, e.g., you'll be operating a
+  remote box from an unrelated local directory.
+- A `.brethof-mind-project` file (first line = a project key) anywhere from
+  the cwd upward — pins a directory tree whose path matches no `match`
+  substring. Handy to commit into a repo whose folder name isn't in `match`.
+
 ## Compatibility
 
 Built and tested against **SurrealDB v3.0.5** (pinned in `docker-compose.yml`).

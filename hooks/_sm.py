@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import urllib.request
 from pathlib import Path
 
@@ -61,6 +62,32 @@ def load_config() -> dict:
 
 
 def detect_project(cwd: str, cfg: dict) -> str:
+    """Resolve the project (memory table) for a working directory.
+
+    Precedence (kept in sync with mcp-server/_config.py):
+      1. $BRETHOF_MIND_PROJECT — explicit override for when cwd is misleading
+         (SSH/remote work, monorepos, driving the VPS from a coordinator dir).
+      2. A `.brethof-mind-project` marker file found by walking up from cwd;
+         its first non-empty line is the project key.
+      3. Substring match of cwd against each project's `match` list.
+      4. default_project.
+    """
+    env_key = os.environ.get("BRETHOF_MIND_PROJECT", "").strip()
+    if re.fullmatch(r"[A-Za-z0-9_]+", env_key or ""):
+        return env_key
+    try:
+        d = Path(cwd or ".").resolve()
+        for base in (d, *d.parents):
+            marker = base / ".brethof-mind-project"
+            if marker.is_file():
+                lines = [ln.strip() for ln
+                         in marker.read_text(encoding="utf-8").splitlines()
+                         if ln.strip()]
+                if lines and re.fullmatch(r"[A-Za-z0-9_]+", lines[0]):
+                    return lines[0]
+                break  # marker present but unusable — stop walking up
+    except Exception:
+        pass  # unreadable path/marker → fall through to substring match
     c = (cwd or "").lower().replace("\\", "/")
     for proj in cfg.get("projects", []):
         for m in proj.get("match", []):
