@@ -43,21 +43,59 @@ def format_records(records, cap=200):
 
 
 def recap_context(table, current_session, cfg):
-    """Last few user/assistant messages from the most recent PRIOR session."""
+    """Last few user/assistant messages from the most recent PRIOR session.
+
+    Two steps, deliberately: first resolve *which* session was most recent,
+    then pull that one session's tail. The earlier single-query
+    `ORDER BY timestamp DESC LIMIT 20` was wrong twice over — it mixed rows
+    across sessions, and (since timestamps are ISO strings and absent
+    timestamps sort to the top here) any row with no timestamp — e.g. leftover
+    test rows — masqueraded as "the last session". Skipping `timestamp = NONE`
+    rows and anchoring on a real session_id fixes both.
+    """
     chat = f"{table}_chat"
+    # 1. Most recent prior session. Timestamps are ISO-8601 strings, so
+    #    lexicographic DESC is chronological DESC. NONE timestamps are excluded
+    #    so untimestamped/test rows can't win the ordering.
     res = query(
-        f"SELECT line_type, role, text, timestamp FROM {chat} "
+        # `timestamp` MUST be in the projection: SurrealDB v3 rejects an
+        # ORDER BY on a field that isn't selected ("Missing order idiom").
+        f"SELECT session_id, timestamp FROM {chat} "
         f"WHERE line_type IN ['user', 'assistant'] "
+        f"AND timestamp != NONE AND session_id != NONE "
         f"AND session_id != '{current_session}' "
-        f"ORDER BY timestamp DESC LIMIT 20;",
+        f"ORDER BY timestamp DESC LIMIT 1;",
+        cfg,
+        timeout=10.0,  # this ORDER BY can scan a large archive; the recap is
+                       # worth a longer budget than the default 6s so it isn't
+                       # silently dropped when the DB is briefly under load.
+    )
+    rows = result_rows(res[0]) if res else []
+    last_session = rows[0].get("session_id") if rows else None
+    if not last_session:
+        return ""
+    # 2. That session's tail — most recent user/assistant lines that have text.
+    res2 = query(
+        # `embedding != NONE` keeps only genuine dialogue: the chat_stop hook
+        # embeds real user prompts and assistant text, but stores tool-result
+        # lines (which arrive as line_type='user') unembedded — so this drops
+        # the tool-result JSON that would otherwise pose as a user message.
+        f"SELECT line_type, role, text, timestamp FROM {chat} "
+        f"WHERE session_id = '{last_session}' "
+        f"AND line_type IN ['user', 'assistant'] "
+        f"AND text != NONE AND text != '' AND embedding != NONE "
+        f"AND !string::starts_with(text, '[tool_use:') "
+        f"ORDER BY timestamp DESC LIMIT 12;",
         cfg,
     )
-    recs = result_rows(res[0]) if res else []
+    recs = result_rows(res2[0]) if res2 else []
     kept = []
     for r in recs:
         txt = " ".join((r.get("text") or "").split())
-        if txt:
-            kept.append((r, txt))
+        # Skip assistant turns that are only a tool call — not human-readable.
+        if not txt or txt.startswith("[tool_use:"):
+            continue
+        kept.append((r, txt))
         if len(kept) >= 8:
             break
     if not kept:
@@ -99,14 +137,20 @@ def main():
     t1 = query(q1, cfg)
 
     # Tier 2 — most recent records.
+    # Exclude type='commit': git commits are recorded into <project>_commit,
+    # not the curated note store. Without this filter they dominate the
+    # recent-memory window (they're created on every commit, so always the
+    # freshest rows) and bury the decisions/status this tier is meant to show.
     q2 = (
         f"SELECT id, type, title, content, updated_at FROM {table} "
-        f"WHERE obsolete != true ORDER BY updated_at DESC LIMIT 12;"
+        f"WHERE obsolete != true AND type != 'commit' "
+        f"ORDER BY updated_at DESC LIMIT 12;"
     )
     if table != default:
         q2 += (
             f" SELECT id, type, title, content, updated_at FROM {default} "
-            f"WHERE obsolete != true ORDER BY updated_at DESC LIMIT 8;"
+            f"WHERE obsolete != true AND type != 'commit' "
+            f"ORDER BY updated_at DESC LIMIT 8;"
         )
     t2 = query(q2, cfg)
 
