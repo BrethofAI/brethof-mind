@@ -62,6 +62,14 @@ def build_ddl(keys: list[str], dim: int) -> str:
             f"DEFINE INDEX IF NOT EXISTS idx_{k}_chat_ltype   ON {k}_chat FIELDS line_type;",
             f"DEFINE INDEX IF NOT EXISTS idx_{k}_chat_text    ON {k}_chat FIELDS text;",
             "",
+            f"-- commit ledger: git commits land here, NOT in the curated {k} "
+            f"note store (they'd flood the recent-memory view). content FTS keeps "
+            f"commit messages keyword-searchable.",
+            f"DEFINE TABLE IF NOT EXISTS {k}_commit TYPE ANY SCHEMALESS PERMISSIONS NONE;",
+            f"DEFINE INDEX IF NOT EXISTS idx_{k}_commit_updated ON {k}_commit FIELDS updated_at;",
+            f"DEFINE INDEX IF NOT EXISTS idx_{k}_commit_content_fts ON {k}_commit "
+            f"FIELDS content FULLTEXT ANALYZER memory_text BM25;",
+            "",
         ]
     return "\n".join(lines)
 

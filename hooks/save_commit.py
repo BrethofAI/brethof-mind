@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Git post-commit hook — record each commit into the project's memory table.
+"""Git post-commit hook — record each commit into the project's commit ledger.
+
+Commits go to the <project>_commit table, NOT the curated <project> note
+store. Recording them in the note store floods the SessionStart "recent
+memory" view (a commit is written on every commit, so they're always the
+freshest rows) and drowns out the decisions/status that view is meant to
+surface. <project>_commit keeps them searchable without the noise.
 
 Install per repo by copying (or symlinking) this file to .git/hooks/post-commit
 and making it executable:
@@ -45,7 +51,7 @@ def main():
     safe_msg = info["message"].replace("\\", "\\\\").replace("'", "\\'")
     safe_files = info["files"].replace("\\", "\\\\").replace("'", "\\'")
     query(
-        f"CREATE {table}:commit_{short} SET "
+        f"UPSERT {table}_commit:commit_{short} SET "
         f"type = 'commit', "
         f"title = '{safe_msg}', "
         f"content = 'hash: {info['hash']}, branch: {info['branch']}, files: {safe_files}', "

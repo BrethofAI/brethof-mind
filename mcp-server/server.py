@@ -345,7 +345,12 @@ async def save_commit(
     files_changed: str,
     branch: str = "main",
 ) -> str:
-    """Record a git commit against a project.
+    """Record a git commit into the project's commit ledger (<project>_commit).
+
+    Commits land in <project>_commit, NOT the curated <project> note store:
+    they are high-volume and would otherwise dominate the SessionStart
+    recent-memory view. They stay searchable there (recent_records / query_raw
+    / search_chat-style FTS) without burying decisions and status.
 
     Args:
         project: A project key from your projects.json.
@@ -354,12 +359,12 @@ async def save_commit(
         files_changed: Comma-separated list of changed files.
         branch: Git branch name.
     """
-    table = project
+    table = f"{project}_commit"
     safe_msg = message.replace("\\", "\\\\").replace("'", "\\'")
     safe_files = files_changed.replace("\\", "\\\\").replace("'", "\\'")
 
     results = await _query(
-        f"CREATE {table}:commit_{commit_hash[:8]} SET "
+        f"UPSERT {table}:commit_{commit_hash[:8]} SET "
         f"type = 'commit', "
         f"title = '{safe_msg}', "
         f"content = 'hash: {commit_hash}, branch: {branch}, files: {safe_files}', "
