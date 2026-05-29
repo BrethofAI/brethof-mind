@@ -131,6 +131,7 @@ def main():
         return (
             f"SELECT id, type, title, content, updated_at FROM {tbl} "
             f"WHERE obsolete != true AND pin = true "
+            f"AND record::id(id) != 'memory_index' "
             f"ORDER BY updated_at DESC LIMIT 40;"
             f" SELECT id, type, title, content, updated_at FROM {tbl} "
             f"WHERE obsolete != true AND type = 'feedback' AND pin != true "
@@ -172,7 +173,17 @@ def main():
                 seen.add(r.get("id"))
                 recent.append(r)
 
-    blocks = [OPERATING_MANUAL]
+    # Tier 0 — the MEMORY INDEX (the map): full + untruncated, shown FIRST.
+    # It tells the agent what tables exist, HOW to search each (vector/graph/
+    # keyword), the areas, and the rules. Navigate from here.
+    idx = query(f"SELECT content FROM {default}:memory_index;", cfg)
+    index_rows = result_rows(idx[0]) if idx else []
+    index_content = (index_rows[0].get("content") if index_rows else "") or ""
+
+    blocks = []
+    if index_content:
+        blocks.append(index_content)
+    blocks.append(OPERATING_MANUAL)
     if pinned:
         blocks.append("\n=== Pinned / golden-rule memory ===\n"
                       + "\n".join(format_records(pinned)))
