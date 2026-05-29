@@ -127,19 +127,21 @@ def main():
     # SEPARATELY: a shared `(pin OR feedback) ... LIMIT 15` let a burst of recent
     # feedback push the (often older) pinned rules out of the window — silently
     # breaking "pin = always shown". Pins get their own generous limit.
-    def _tier1(tbl, fb_limit):
+    def _pins(tbl):
         return (
             f"SELECT id, type, title, content, updated_at FROM {tbl} "
             f"WHERE obsolete != true AND pin = true "
             f"AND record::id(id) != 'memory_index' "
             f"ORDER BY updated_at DESC LIMIT 40;"
-            f" SELECT id, type, title, content, updated_at FROM {tbl} "
-            f"WHERE obsolete != true AND type = 'feedback' AND pin != true "
-            f"ORDER BY updated_at DESC LIMIT {fb_limit};"
         )
-    q1 = _tier1(table, 12)
+    q1 = _pins(table)
     if table != default:
-        q1 += " " + _tier1(default, 10)
+        q1 += " " + _pins(default)
+    # Cross-cutting RULES now live in the `rules` table (migrated from the old
+    # type='feedback' rows). Surface every area='all' rule; project-specific
+    # rules load on demand when the agent focuses on that area.
+    q1 += (" SELECT id, 'rule' AS type, title, content, updated_at FROM rules "
+           "WHERE area = 'all' ORDER BY updated_at DESC LIMIT 30;")
     t1 = query(q1, cfg)
 
     # Tier 2 — most recent records.
@@ -149,13 +151,13 @@ def main():
     # freshest rows) and bury the decisions/status this tier is meant to show.
     q2 = (
         f"SELECT id, type, title, content, updated_at FROM {table} "
-        f"WHERE obsolete != true AND type != 'commit' "
+        f"WHERE obsolete != true AND type != 'commit' AND type != 'feedback'"
         f"ORDER BY updated_at DESC LIMIT 12;"
     )
     if table != default:
         q2 += (
             f" SELECT id, type, title, content, updated_at FROM {default} "
-            f"WHERE obsolete != true AND type != 'commit' "
+            f"WHERE obsolete != true AND type != 'commit' AND type != 'feedback'"
             f"ORDER BY updated_at DESC LIMIT 8;"
         )
     t2 = query(q2, cfg)
@@ -180,9 +182,18 @@ def main():
     index_rows = result_rows(idx[0]) if idx else []
     index_content = (index_rows[0].get("content") if index_rows else "") or ""
 
+    # Dashboard — at-a-glance status of every front (the `state` table).
+    dash = query("SELECT area, status FROM state ORDER BY area;", cfg)
+    dash_rows = result_rows(dash[0]) if dash else []
+
     blocks = []
     if index_content:
         blocks.append(index_content)
+    if dash_rows:
+        dlines = "\n".join(
+            f"  {(r.get('area') or '?'):<14} {(r.get('status') or '')[:110]}"
+            for r in dash_rows)
+        blocks.append("\n=== Where things stand (state dashboard) ===\n" + dlines)
     blocks.append(OPERATING_MANUAL)
     if pinned:
         blocks.append("\n=== Pinned / golden-rule memory ===\n"
