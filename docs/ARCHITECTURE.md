@@ -8,19 +8,24 @@ two layers and four moving parts.
 | Layer | Tables | Written by | Read by |
 |---|---|---|---|
 | **Curated** (gold) | `<project>` | `save_memory` (the agent, deliberately) | `load_project`, `search_memory`, `semantic_search`, SessionStart hook |
-| **Archive** (raw) | `<project>_chat` | `chat_stop` hook (automatic, every turn) | `search_chat`, SessionStart recap |
+| **Archive** (raw) | `<project>_chat` | `chat_stop` hook (automatic, every turn) | `search_chat` (vector), `search_chat_text` (keyword/BM25), SessionStart recap |
 
 The curated layer is small and high-signal: decisions, architecture notes,
 status, bugs, user corrections. The archive is everything — a complete,
-searchable mirror of every transcript line. The agent promotes the important
-bits from archive into curated memory as it works.
+searchable mirror of every transcript line, queryable by meaning
+(`search_chat`) and by exact keyword (`search_chat_text`). The agent promotes
+the important bits from archive into curated memory as it works.
+
+Git commits are kept in a separate narrow ledger (`<project>_commit`, written
+by `save_commit`) — out of the curated layer so their per-commit volume can
+never crowd the session-start view, still searchable when you want them.
 
 ## The four parts
 
 ```
                           ┌─────────────────────────────┐
    Claude Code  ◄────────►│  MCP server (server.py)      │
-     session              │  7 tools over stdio          │
+     session              │  12 tools over stdio         │
         │                 └──────────────┬──────────────┘
         │ hooks                          │ HTTP /sql
         ▼                                ▼
@@ -39,7 +44,7 @@ bits from archive into curated memory as it works.
    optional Surrealist container is just a web UI for browsing.
 
 2. **MCP server** (`mcp-server/server.py`) — a FastMCP stdio server exposing
-   the seven tools. Registered with Claude Code via `claude mcp add`. It reads
+   the twelve tools. Registered with Claude Code via `claude mcp add`. It reads
    `projects.json` for the project map and the DB connection.
 
 3. **Hooks** (`hooks/`) — four Claude Code lifecycle hooks:

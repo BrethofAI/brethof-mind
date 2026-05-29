@@ -60,7 +60,15 @@ def build_ddl(keys: list[str], dim: int) -> str:
             f"DEFINE INDEX IF NOT EXISTS idx_{k}_chat_session ON {k}_chat FIELDS session_id;",
             f"DEFINE INDEX IF NOT EXISTS idx_{k}_chat_ts      ON {k}_chat FIELDS timestamp;",
             f"DEFINE INDEX IF NOT EXISTS idx_{k}_chat_ltype   ON {k}_chat FIELDS line_type;",
-            f"DEFINE INDEX IF NOT EXISTS idx_{k}_chat_text    ON {k}_chat FIELDS text;",
+            f"-- chat text: FULLTEXT (BM25) so the archive is keyword-searchable "
+            f"(search_chat is vector-only and misses exact strings — paths, "
+            f"errors, hashes). Replaces an earlier plain index of the same name.",
+            f"REMOVE INDEX IF EXISTS idx_{k}_chat_text ON {k}_chat;",
+            # CONCURRENTLY builds in the background: a blocking DEFINE over a
+            # large existing chat table would exceed the HTTP timeout. (Empty
+            # tables on a fresh install build instantly either way.)
+            f"DEFINE INDEX IF NOT EXISTS idx_{k}_chat_text_fts ON {k}_chat FIELDS text "
+            f"FULLTEXT ANALYZER memory_text BM25 CONCURRENTLY;",
             "",
             f"-- commit ledger: git commits land here, NOT in the curated {k} "
             f"note store (they'd flood the recent-memory view). content FTS keeps "

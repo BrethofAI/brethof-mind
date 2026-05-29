@@ -10,7 +10,7 @@
 Claude Code: full-text + vector + graph, 100% local, no API.*
 
 Claude Code forgets everything between sessions. brethof-mind gives it a
-persistent, searchable memory: an MCP server with eleven tools and four
+persistent, searchable memory: an MCP server with twelve tools and four
 lifecycle hooks, backed by a local SurrealDB. Decisions, status, and bugs are
 saved as curated memory; every conversation is mirrored into a complete,
 searchable archive. All of it stays on your machine.
@@ -54,8 +54,9 @@ curated view without ever depending on one.
 - **Two memories, working together.** A dense *curated* layer (your notes)
   backed by a complete *chat archive* (the recording) — so recall never
   depends on what a summary kept.
-- **Three ways to search.** Full-text (stemmed, BM25-ranked), semantic
-  (vector), and graph (SurrealQL traversal + relations).
+- **Three ways to search.** Full-text (stemmed, BM25-ranked) over both the
+  curated notes and the full chat archive, semantic (vector), and graph
+  (SurrealQL traversal + relations).
 - **Multi-project.** One DB, one table per project. A `projects.json` maps each
   repo to its own memory.
 - **Local-first, no API.** SurrealDB in a local container; embeddings computed
@@ -127,7 +128,7 @@ mcp-server/.venv/bin/python mcp-server/scripts/ingest_transcripts.py
 
 ## The tools
 
-The MCP server exposes eleven tools (registered above as `memory`):
+The MCP server exposes twelve tools (registered above as `memory`):
 
 | Tool | What it does |
 |---|---|
@@ -136,7 +137,8 @@ The MCP server exposes eleven tools (registered above as `memory`):
 | `save_record(project, id, fields, embed_text?)` | UPSERT a structured record — `fields` is a JSON object, each key becomes a real queryable field. `embed_text` enables semantic search. |
 | `search_memory(query, project?)` | Full-text search over curated memory (stemmed, BM25-ranked). |
 | `semantic_search(query, project?, top_k?)` | Vector search over curated memory. |
-| `search_chat(query, project?, top_k?)` | Vector search over the full chat archive. |
+| `search_chat(query, project?, top_k?)` | Vector (meaning) search over the full chat archive. |
+| `search_chat_text(query, project?, top_k?)` | Keyword (BM25) search over the full chat archive — exact strings (paths, errors, hashes, flags) that vector search misses, and lines that were never embedded. |
 | `get_memory(record_id, project?)` | Fetch ONE record's full, untruncated content by id (search results are previews). |
 | `list_memory(project, type?, limit?)` | Browse a project's record ids/titles (no content), newest first. |
 | `recent_records(project, days?, where?, limit?)` | Recent structured rows from a table, newest first — a scoped/filtered reader for high-volume ledgers. |

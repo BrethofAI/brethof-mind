@@ -56,7 +56,25 @@
 --                            split across multiple rows (see chat_stop hook)
 --
 -- Indexes (created by init_db.py): embedding (HNSW), session_id, timestamp,
--- line_type, text.
+-- line_type, and text — the text index is FULLTEXT (BM25, via the memory_text
+-- analyzer) so the archive is keyword-searchable (search_chat_text), not only
+-- vector-searchable (search_chat). Built CONCURRENTLY so re-indexing a large
+-- existing archive doesn't block past the HTTP timeout.
+
+
+-- ── Commit ledger  (one per project key, e.g. `global_commit`) ───────────
+-- Git commits, written by the save_commit hook + MCP tool. Deliberately a
+-- SEPARATE table from the curated <project> note store: a commit is recorded
+-- on every commit, so left in the note store they dominate the SessionStart
+-- recent-memory view. Kept here, they stay searchable without the noise.
+--
+--   type        string    'commit'
+--   title       string    commit subject line
+--   content     string    'hash: ..., branch: ..., files: ...'
+--   scope       string    'project'
+--   updated_at  datetime
+--
+-- Indexes (created by init_db.py): updated_at; content (FULLTEXT BM25).
 
 
 -- ── supersedes  (graph relation, project-independent) ────────────────────

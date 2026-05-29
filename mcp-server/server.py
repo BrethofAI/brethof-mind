@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """brethof-mind — SurrealDB-backed long-term memory MCP server for Claude Code.
 
-Exposes eleven tools over stdio:
+Exposes twelve tools over stdio:
   load_project    — dump a project's recent memory at conversation start
   save_memory     — UPSERT a curated memory NOTE (type/title/content, auto-embedded)
   save_record     — UPSERT a STRUCTURED record (arbitrary typed fields)
   search_memory   — keyword search over curated memory
   semantic_search — vector search over curated memory
-  search_chat     — vector search over the full chat-history archive
+  search_chat     — vector (meaning) search over the full chat-history archive
+  search_chat_text— keyword (BM25) search over the full chat-history archive
   get_memory      — fetch ONE record's full, untruncated content by id
   list_memory     — browse a project's record ids/titles (no content)
   recent_records  — recent structured rows from a table (scoped, filtered)
   query_raw       — arbitrary SurrealQL (graph traversal, aggregates)
-  save_commit     — record a git commit against a project
+  save_commit     — record a git commit into the project's commit ledger
 
 Projects (which working dir → which memory table) and the SurrealDB
 connection come from _config.py (projects.json + environment). There is no
@@ -272,6 +273,11 @@ async def search_chat(query_text: str, project: str = "", top_k: int = 8) -> str
     discussed/decided/tried in earlier sessions. semantic_search covers the
     curated memory; this covers the raw archive.
 
+    This is VECTOR (meaning) search, and only conversation lines are embedded.
+    For EXACT strings — file paths, error messages, commit hashes, CLI flags,
+    function names — use search_chat_text (keyword/BM25), which matches the
+    literal text and covers every archived line, embedded or not.
+
     Args:
         query_text: Natural-language query.
         project: Optional project key. Leave empty to search all.
@@ -305,6 +311,55 @@ async def search_chat(query_text: str, project: str = "", top_k: int = 8) -> str
         txt = " ".join((r.get("text") or "").split())[:260]
         output.append(
             f"[{score:.2f}] [{r['_table']}/{r.get('line_type', '')}"
+            f"/{r.get('role') or '-'}] {ts} {(r.get('session_id') or '')[:8]}: {txt}"
+        )
+    return "\n".join(output)
+
+
+@mcp.tool()
+async def search_chat_text(query_text: str, project: str = "", top_k: int = 12) -> str:
+    """Keyword (full-text, BM25) search over the chat archive (<project>_chat).
+
+    The keyword counterpart to search_chat (which is vector/meaning-only and
+    covers only embedded conversation lines). Use this for EXACT strings the
+    vector index can't match — file paths, error messages, commit hashes, CLI
+    flags, function names — and to search lines that were never embedded (tool
+    output, system lines). Stemmed + lowercased + ascii-folded via the same
+    `memory_text` analyzer as search_memory.
+
+    Args:
+        query_text: Words/phrase to find in the archived conversation text.
+        project: Optional project key. Leave empty to search all projects.
+        top_k: Number of results (default 12).
+    """
+    safe = query_text.replace("\\", "\\\\").replace("'", "\\'")
+    tables = [f"{project}_chat"] if project else [f"{t}_chat" for t in _all_tables()]
+    lim = max(1, min(int(top_k), 50))
+
+    all_results = []
+    for table in tables:
+        results = await _query(
+            f"SELECT id, line_type, role, session_id, text, timestamp, "
+            f"search::score(1) AS score FROM {table} "
+            f"WHERE text @1@ '{safe}' ORDER BY score DESC LIMIT {lim};"
+        )
+        records = results[0].get("result", []) if results else []
+        for r in records:
+            r["_table"] = table
+            all_results.append(r)
+
+    all_results.sort(key=lambda r: r.get("score", 0) or 0, reverse=True)
+    all_results = all_results[:lim]
+
+    if not all_results:
+        return f"No chat-archive text matches for '{query_text}'"
+
+    output = []
+    for r in all_results:
+        ts = (r.get("timestamp") or "")[:16]
+        txt = " ".join((r.get("text") or "").split())[:260]
+        output.append(
+            f"[{r['_table']}/{r.get('line_type', '')}"
             f"/{r.get('role') or '-'}] {ts} {(r.get('session_id') or '')[:8]}: {txt}"
         )
     return "\n".join(output)
