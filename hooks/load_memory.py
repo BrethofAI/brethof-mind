@@ -122,18 +122,23 @@ def main():
     table = detect_project(cwd, cfg)
     default = cfg.get("default_project", "global")
 
-    # Tier 1 — pinned + feedback (golden rules): always surfaced, any age.
-    q1 = (
-        f"SELECT id, type, title, content, updated_at FROM {table} "
-        f"WHERE obsolete != true AND (pin = true OR type = 'feedback') "
-        f"ORDER BY updated_at DESC LIMIT 15;"
-    )
-    if table != default:
-        q1 += (
-            f" SELECT id, type, title, content, updated_at FROM {default} "
-            f"WHERE obsolete != true AND (pin = true OR type = 'feedback') "
-            f"ORDER BY updated_at DESC LIMIT 10;"
+    # Tier 1 — golden rules. Pinned records are ALWAYS surfaced (the documented
+    # `pin` contract); feedback/corrections are surfaced newest-first. Queried
+    # SEPARATELY: a shared `(pin OR feedback) ... LIMIT 15` let a burst of recent
+    # feedback push the (often older) pinned rules out of the window — silently
+    # breaking "pin = always shown". Pins get their own generous limit.
+    def _tier1(tbl, fb_limit):
+        return (
+            f"SELECT id, type, title, content, updated_at FROM {tbl} "
+            f"WHERE obsolete != true AND pin = true "
+            f"ORDER BY updated_at DESC LIMIT 40;"
+            f" SELECT id, type, title, content, updated_at FROM {tbl} "
+            f"WHERE obsolete != true AND type = 'feedback' AND pin != true "
+            f"ORDER BY updated_at DESC LIMIT {fb_limit};"
         )
+    q1 = _tier1(table, 12)
+    if table != default:
+        q1 += " " + _tier1(default, 10)
     t1 = query(q1, cfg)
 
     # Tier 2 — most recent records.
