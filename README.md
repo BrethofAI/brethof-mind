@@ -116,6 +116,9 @@ claude mcp add memory -- \
 cp hooks/*.py ~/.claude/hooks/
 # then merge settings.example.json's "hooks" block into ~/.claude/settings.json
 # (point the Stop hook at mcp-server/.venv/bin/python — it needs fastembed)
+
+# 6. Install the slash commands (/curate and /recall)
+cp commands/*.md ~/.claude/commands/
 ```
 
 Restart Claude Code. A new session now opens with your memory loaded.
@@ -149,10 +152,19 @@ The MCP server exposes twelve tools (registered above as `memory`):
 
 | Hook | Event | Role |
 |---|---|---|
-| `load_memory.py` | SessionStart | Inject pinned rules, recent memory, last-session recap. |
+| `load_memory.py` | SessionStart | Inject the memory index, a per-area state dashboard, pinned rules, recent memory, and a last-session recap. |
 | `memory_nudge.py` | UserPromptSubmit | Remind the agent to search memory first. |
 | `chat_stop.py` | Stop | Mirror new transcript lines into the archive. |
 | `save_commit.py` | git post-commit | Record commits (copy into a repo's `.git/hooks/`). |
+
+## The commands
+
+Two Claude Code slash commands — these are agent *tasks* (judgment), not scripts:
+
+| Command | When | What it does |
+|---|---|---|
+| `/curate` | Before `/compact`, or at the end of a work session | Distills the session into memory — updates each touched area's `state`, saves new decisions/rules, logs shipped content, and **deletes what became false** (history stays in the chat archive). This is what makes the next session pick up where you left off. |
+| `/recall <topic>` | Any time you need to remember | Multi-modal retrieval — vector + graph + keyword, not just one keyword search — then a single grounded answer that cites the record ids it used. |
 
 ## Configuration
 
